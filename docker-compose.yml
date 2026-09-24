@@ -99,22 +99,22 @@ services:
         AUTH="elastic:${ELASTIC_PASSWORD}"
         KB="http://kibana:5601"
         echo "Waiting for Kibana to be available...";
-        until curl -s "$KB/api/status" | grep -q '"level":"available"'; do sleep 5; done
+        until curl -s "$$KB/api/status" | grep -q '"level":"available"'; do sleep 5; done
         echo "Installing prebuilt rules package + all rules (internal _perform)...";
-        code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -u "$AUTH" \
-          -H 'kbn-xsrf: true' -H 'elastic-api-version: 1' -H 'Content-Type: application/json' \
-          "$KB/internal/detection_engine/prebuilt_rules/installation/_perform" \
+        code=$$(curl -s -o /dev/null -w '%{http_code}' -X POST -u "$$AUTH" \
+          -H 'kbn-xsrf: true' -H 'elastic-api-version: 1' -H 'x-elastic-internal-origin: Kibana' -H 'Content-Type: application/json' \
+          "$$KB/internal/detection_engine/prebuilt_rules/installation/_perform" \
           -d '{"mode":"ALL_RULES"}')
-        echo "_perform HTTP $code";
-        if [ "$code" != "200" ]; then
+        echo "_perform HTTP $$code";
+        if [ "$$code" != "200" ]; then
           echo "Falling back to legacy PUT prepackaged...";
-          curl -s -X PUT -u "$AUTH" -H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' \
-            "$KB/api/detection_engine/rules/prepackaged" || true; echo;
+          curl -s -X PUT -u "$$AUTH" -H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' \
+            "$$KB/api/detection_engine/rules/prepackaged" || true; echo;
         fi
         echo "Enabling all installed rules...";
-        curl -s -X POST -u "$AUTH" -H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' \
+        curl -s -X POST -u "$$AUTH" -H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' \
           -H 'Content-Type: application/json' \
-          "$KB/api/detection_engine/rules/_bulk_action" \
+          "$$KB/api/detection_engine/rules/_bulk_action" \
           -d '{"action":"enable","query":""}' >/dev/null || true
         echo "Rules bootstrap complete.";
     networks:

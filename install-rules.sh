@@ -12,7 +12,7 @@ LAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 KB="http://localhost:${KIBANA_PORT:-5601}"
 AUTH="elastic:${ELASTIC_PASSWORD:?ELASTIC_PASSWORD not set (check .env)}"
-INT=(-H 'kbn-xsrf: true' -H 'elastic-api-version: 1'          -H 'Content-Type: application/json')
+INT=(-H 'kbn-xsrf: true' -H 'elastic-api-version: 1' -H 'x-elastic-internal-origin: Kibana' -H 'Content-Type: application/json')
 PUB=(-H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' -H 'Content-Type: application/json')
 
 say(){ printf '\n\033[1;36m[rules]\033[0m %s\n' "$*"; }
