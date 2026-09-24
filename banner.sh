@@ -22,16 +22,6 @@ FIG=(
 '╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝'
 )
 
-QUIPS=(
-"Red teams attack. Blue teams defend. Purple teams do both before lunch."
-"Every good detection starts with a log nobody was reading."
-"If it isn't logged, it didn't happen. If it isn't alerted, nobody noticed."
-"Tuoni knocks, Sysmon writes it down, Elastic tells on it."
-"Generate the attack. Catch the attack. Tune. Repeat."
-"The best time to write a detection was before the breach. The second best is now."
-"Assume breach. Then prove you'd see it."
-)
-
 # banner [version]
 banner(){
   local ver="${1:-}"
@@ -47,8 +37,7 @@ banner(){
   printf '\n        =[ purple-team-lab %s ]\n' "$ver"
   printf     '+ -- --=[ elastic SIEM  ·  windows target  ·  tuoni C2 ]\n'
   printf     '+ -- --=[ sysmon + winlogbeat  ·  prebuilt detection rules ]\n'
-  _r
-  _c 99; printf '\n  %s\n\n' "${QUIPS[$((RANDOM % ${#QUIPS[@]}))]}"; _r
+  _r; printf '\n'
   _show
 }
 
