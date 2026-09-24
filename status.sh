@@ -29,4 +29,12 @@ curl -s -u "elastic:$EP" -H 'elastic-api-version: 2023-10-31' \
 _c 141; printf '\n== Tuoni C2 ==\n'; _r
 curl -sk -o /dev/null -w '  UI https://localhost:12702 -> HTTP %{http_code}\n' https://localhost:12702 2>/dev/null \
   || echo '  not reachable'
+
+if [ "${INGEST:-winlogbeat}" = "elastic-agent" ]; then
+  _c 141; printf '\n== Fleet ==\n'; _r
+  curl -s http://localhost:8220/api/status 2>/dev/null | grep -o '"status":"[A-Z]*"' || echo '  fleet-server not reachable'
+  curl -s -u "elastic:$EP" -H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' \
+    "http://localhost:${KIBANA_PORT:-5601}/api/fleet/agents?perPage=0" 2>/dev/null \
+    | grep -o '"total":[0-9]*' | head -n1 | sed 's/^/  agents /' || echo '  no agents yet'
+fi
 printf '\n'

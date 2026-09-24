@@ -85,6 +85,32 @@ Get the login with `cd ~/tuoni && ./tuoni print-credentials`. To point a beacon
 at the Windows target, use the Docker host's LAN IP as the callback address (not
 the internal `172.30.0.x` IPs — Tuoni isn't on that network).
 
+## Ingest mode: Winlogbeat vs Elastic Agent (Fleet)
+
+Set `INGEST` in `.env`:
+
+- **`winlogbeat`** (default) — one binary on the target. Simple, but Sysmon events
+  land largely as raw `winlog.event_data.*` (e.g. `destination.ip` is not populated).
+- **`elastic-agent`** — stands up a **Fleet Server** and enrols an **Elastic Agent**
+  with the **Windows** integration. Full ECS normalisation (`destination.ip`,
+  `source.ip`, `process.*`, …) and the `logs-windows.*` prebuilt rules start firing.
+
+Switching is just:
+```bash
+# in .env
+INGEST=elastic-agent
+```
+then `./start-lab.sh` (it adds `docker-compose.fleet.yml`, brings up `fleet-server`
+on `:8220`, and the target enrols itself into the `pl-windows` policy on first boot).
+Check enrolment in Kibana → **Fleet → Agents**, and `./status.sh` shows Fleet health
++ agent count.
+
+Notes / caveats for Fleet mode:
+- Kibana needs internet the first time to download the `fleet_server`, `windows`, and `system` integration packages.
+- The target still installs **Sysmon** (the Windows integration parses the Sysmon channel — it doesn't generate the events). If Sysmon events aren't collected, enable the **Sysmon/Operational** input in Fleet → the Windows integration policy.
+- Agents ship to `http://172.30.0.10:9200` and enrol against `http://172.30.0.40:8220` (insecure HTTP — lab only).
+- Switching modes on an already-provisioned box won't re-run enrolment (provisioning only runs on a fresh Windows install); wipe the Windows volume to re-provision under the new mode.
+
 ## Memory (Docker Desktop / WSL2)
 
 The Windows VM needs ≥2 GB free at boot; if WSL2 is starved you'll see

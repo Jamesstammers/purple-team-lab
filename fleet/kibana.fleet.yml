@@ -1,0 +1,55 @@
+# Kibana config for Fleet mode (mounted over the image default).
+# ES connection + encryption keys still come from environment variables
+# set in docker-compose.yml; this file only adds server binding + Fleet
+# preconfiguration.
+server.host: "0.0.0.0"
+server.name: purplelab-kibana
+
+# Integrations installed at startup
+xpack.fleet.packages:
+  - name: fleet_server
+    version: latest
+  - name: windows
+    version: latest
+  - name: system
+    version: latest
+
+# Default output — agents (including the Windows target behind NAT) ship here.
+# Must be an IP the agents can route to, NOT the docker DNS name.
+xpack.fleet.outputs:
+  - id: default-output
+    name: default
+    type: elasticsearch
+    is_default: true
+    is_default_monitoring: true
+    hosts:
+      - "http://172.30.0.10:9200"
+
+# Fleet Server host agents enroll against (insecure HTTP for the lab).
+xpack.fleet.fleetServerHosts:
+  - id: default-fleet-server
+    name: default
+    is_default: true
+    host_urls:
+      - "http://172.30.0.40:8220"
+
+# Policies created at startup: one for Fleet Server, one for the Windows target.
+xpack.fleet.agentPolicies:
+  - id: fleet-server-policy
+    name: Fleet Server Policy
+    is_default_fleet_server: true
+    package_policies:
+      - name: fleet_server-1
+        package:
+          name: fleet_server
+  - id: pl-windows
+    name: Windows Target Policy
+    is_default: true
+    namespace: default
+    package_policies:
+      - name: windows-1
+        package:
+          name: windows
+      - name: system-1
+        package:
+          name: system

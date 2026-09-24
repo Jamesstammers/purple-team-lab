@@ -8,8 +8,12 @@ DOWN_ARGS=""
 [ "${1:-}" = "--wipe" ] && DOWN_ARGS="-v"
 
 cd "$LAB_DIR"
-echo "[lab] Stopping Elastic + Kibana + Windows..."
-docker compose down $DOWN_ARGS
+set -a; [ -f .env ] && . ./.env; set +a
+DC="docker compose -f docker-compose.yml"
+[ "${INGEST:-winlogbeat}" = "elastic-agent" ] && DC="$DC -f docker-compose.fleet.yml"
+
+echo "[lab] Stopping Elastic + Kibana + Windows${INGEST:+ + Fleet}..."
+$DC down $DOWN_ARGS
 
 if [ -d "$HOME/tuoni" ]; then
   echo "[lab] Stopping Tuoni..."

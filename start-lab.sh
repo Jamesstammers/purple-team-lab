@@ -30,24 +30,36 @@ if [ ! -f .env ]; then
 fi
 set -a; . ./.env; set +a
 
+# --- ingest mode: winlogbeat (default) or elastic-agent (Fleet) --------
+INGEST="${INGEST:-winlogbeat}"
+DC="docker compose -f docker-compose.yml"
+if [ "$INGEST" = "elastic-agent" ]; then
+  DC="$DC -f docker-compose.fleet.yml"
+fi
+
 # --- splash -----------------------------------------------------------
 banner "${STACK_VERSION:-}"
+[ "$INGEST" = "elastic-agent" ] && ok "ingest mode: elastic-agent (Fleet)" || ok "ingest mode: winlogbeat"
 [ -e /dev/kvm ] || warn "/dev/kvm not found — the Windows target may fail to boot (needs WSL2 + nested virtualization)."
 
 # --- 1. pull -----------------------------------------------------------
 step "Pulling Elastic images (validates STACK_VERSION)"
-docker compose pull elasticsearch kibana || die "Image pull failed. Check STACK_VERSION=$STACK_VERSION is a real tag on docker.elastic.co."
+$DC pull elasticsearch kibana || die "Image pull failed. Check STACK_VERSION=$STACK_VERSION is a real tag on docker.elastic.co."
+[ "$INGEST" = "elastic-agent" ] && $DC pull fleet-server >/dev/null 2>&1
 ok "images ready"
 
 # --- 2. core stack -----------------------------------------------------
 step "Starting core stack (Elasticsearch, Kibana, Windows target)"
-docker compose up -d
+$DC up -d
 ok "containers created"
 
 # --- 3. wait for services ---------------------------------------------
 step "Waiting for the SIEM to come online"
 wait_until "Elasticsearch" "curl -s -u elastic:$ELASTIC_PASSWORD http://localhost:${ES_PORT:-9200}/_cluster/health | grep -q '\"status\"'" 300
 wait_until "Kibana"        "curl -s http://localhost:${KIBANA_PORT:-5601}/api/status | grep -q '\"level\":\"available\"'" 300
+if [ "$INGEST" = "elastic-agent" ]; then
+  wait_until "Fleet Server" "curl -s http://localhost:8220/api/status | grep -q HEALTHY" 300
+fi
 
 # --- 4. detection rules -----------------------------------------------
 step "Installing + enabling prebuilt detection rules"
@@ -94,6 +106,7 @@ warn "Installs itself in the background on first run (~10-20 min)."
 _c 246
 printf '      watch install : http://localhost:8006\n'
 printf '      check status  : ./status.sh\n'
+[ "$INGEST" = "elastic-agent" ] && printf '      it enrols into Fleet on its own — see Kibana > Fleet > Agents\n'
 _r
 
 # --- 7. Auto baseline snapshot (background, one-time) ------------------
@@ -118,5 +131,6 @@ printf '   Windows SSH   ssh %s@localhost -p %s\n' "${WIN_USERNAME:-labadmin}" "
 printf '   Windows setup http://localhost:%s\n' "${WIN_VIEW_PORT:-8006}"
 printf '   Tuoni C2      https://localhost:12702   (cd ~/tuoni && ./tuoni print-credentials)\n'
 printf '   Tuoni server  https://%s:8443   (accept the self-signed cert once, per browser)\n' "$FQDN"
+[ "$INGEST" = "elastic-agent" ] && printf '   Fleet Server  http://localhost:8220   (Kibana > Fleet > Agents)\n'
 _r
 printf '\n'
