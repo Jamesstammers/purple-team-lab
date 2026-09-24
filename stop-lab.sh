@@ -13,7 +13,7 @@ DC="docker compose -f docker-compose.yml"
 [ "${INGEST:-winlogbeat}" = "elastic-agent" ] && DC="$DC -f docker-compose.fleet.yml"
 
 echo "[lab] Stopping Elastic + Kibana + Windows${INGEST:+ + Fleet}..."
-$DC down $DOWN_ARGS
+$DC --progress quiet down $DOWN_ARGS
 
 if [ -d "$HOME/tuoni" ]; then
   echo "[lab] Stopping Tuoni..."

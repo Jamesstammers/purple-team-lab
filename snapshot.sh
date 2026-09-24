@@ -22,8 +22,8 @@ SNAPVOL="pl_snapshots"
 VOL=$(docker volume ls --format '{{.Name}}' | grep '_win_storage$' | head -n1)
 [ -n "$VOL" ] || { echo "[snap] Couldn't find the win_storage volume — has the lab ever started?"; exit 1; }
 
-stop_win()  { echo "[snap] Stopping Windows target..."; docker compose stop windows >/dev/null; }
-start_win() { echo "[snap] Starting Windows target..."; docker compose start windows >/dev/null; }
+stop_win()  { echo "[snap] Stopping Windows target..."; docker compose --progress quiet stop windows >/dev/null 2>&1; }
+start_win() { echo "[snap] Starting Windows target..."; docker compose --progress quiet start windows >/dev/null 2>&1; }
 
 case "$CMD" in
   save)

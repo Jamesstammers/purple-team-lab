@@ -50,7 +50,7 @@ ok "images ready"
 
 # --- 2. core stack -----------------------------------------------------
 step "Starting core stack (Elasticsearch, Kibana, Windows target)"
-$DC up -d
+$DC --progress quiet up -d
 ok "containers created"
 
 # --- 3. wait for services ---------------------------------------------
