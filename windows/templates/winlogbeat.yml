@@ -1,0 +1,39 @@
+# ============================================================
+#  Winlogbeat — Purple Team Lab target
+#  ${...} values are injected by the config-render service.
+# ============================================================
+
+winlogbeat.event_logs:
+  - name: Application
+    ignore_older: 72h
+  - name: System
+  - name: Security
+  - name: Microsoft-Windows-Sysmon/Operational
+  - name: Microsoft-Windows-PowerShell/Operational
+  - name: Windows PowerShell
+  - name: Microsoft-Windows-WMI-Activity/Operational
+  - name: Microsoft-Windows-TaskScheduler/Operational
+  - name: ForwardedEvents
+    tags: [forwarded]
+
+# Enrich events with the Sysmon/PowerShell/Security ECS modules
+winlogbeat.event_logs.processors: ~
+
+setup.template.settings:
+  index.number_of_shards: 1
+setup.ilm.enabled: false
+
+output.elasticsearch:
+  hosts: ["http://${ESHOST}:9200"]
+  username: "elastic"
+  password: "${ELASTIC_PASSWORD}"
+
+setup.kibana:
+  host: "http://${KBHOST}:5601"
+  username: "elastic"
+  password: "${ELASTIC_PASSWORD}"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: C:/ProgramData/winlogbeat/Logs

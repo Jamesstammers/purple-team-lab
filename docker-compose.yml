@@ -1,0 +1,198 @@
+# ─────────────────────────────────────────────────────────────
+#  Purple Team Lab — single-command stack
+#    - Elasticsearch + Kibana  (secured, single node)
+#    - Tuoni C2                (parameterised image/licence)
+#    - Windows target          (dockur/windows, real Windows VM under KVM)
+#                              headless, SSH on ${WIN_SSH_PORT}
+#    - Sysmon + Winlogbeat auto-installed on the Windows target,
+#      shipping to Elasticsearch; prebuilt detection rules installed & enabled.
+#
+#  Usage:   cp .env.example .env   &&   docker compose up -d
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Elasticsearch ──────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    container_name: pl-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=true
+      # Auth is on, but HTTP TLS is off to keep the lab simple.
+      # (API keys — required by the detection engine — still work over HTTP.)
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - xpack.license.self_generated.type=${LICENSE}
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms${ES_MEM} -Xmx${ES_MEM}"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_PORT}:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 40
+    networks:
+      purplelab:
+        ipv4_address: 172.30.0.10
+
+  # ── One-shot: set the kibana_system password so Kibana can log in ──
+  es-setup:
+    image: curlimages/curl:8.10.1
+    container_name: pl-es-setup
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Setting kibana_system password...";
+        curl -s -X POST -u "elastic:${ELASTIC_PASSWORD}" \
+          http://elasticsearch:9200/_security/user/kibana_system/_password \
+          -H 'Content-Type: application/json' \
+          -d "{\"password\":\"${KIBANA_PASSWORD}\"}" && echo " ...done";
+    networks:
+      - purplelab
+
+  # ── Kibana ─────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    container_name: pl-kibana
+    depends_on:
+      es-setup:
+        condition: service_completed_successfully
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - XPACK_SECURITY_ENCRYPTIONKEY=${ENCRYPTION_KEY}
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=${SO_ENCRYPTION_KEY}
+      - XPACK_REPORTING_ENCRYPTIONKEY=${REPORTING_KEY}
+      - SERVER_PUBLICBASEURL=http://localhost:${KIBANA_PORT}
+    ports:
+      - "${KIBANA_PORT}:5601"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+    networks:
+      purplelab:
+        ipv4_address: 172.30.0.11
+
+  # ── One-shot: install + enable the prebuilt detection rules ──
+  rules-setup:
+    image: curlimages/curl:8.10.1
+    container_name: pl-rules-setup
+    depends_on:
+      kibana:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        AUTH="elastic:${ELASTIC_PASSWORD}"
+        KB="http://kibana:5601"
+        echo "Waiting for Kibana to be available...";
+        until curl -s "$KB/api/status" | grep -q '"level":"available"'; do sleep 5; done
+        echo "Installing prebuilt rules package + all rules (internal _perform)...";
+        code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -u "$AUTH" \
+          -H 'kbn-xsrf: true' -H 'elastic-api-version: 1' -H 'Content-Type: application/json' \
+          "$KB/internal/detection_engine/prebuilt_rules/installation/_perform" \
+          -d '{"mode":"ALL_RULES"}')
+        echo "_perform HTTP $code";
+        if [ "$code" != "200" ]; then
+          echo "Falling back to legacy PUT prepackaged...";
+          curl -s -X PUT -u "$AUTH" -H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' \
+            "$KB/api/detection_engine/rules/prepackaged" || true; echo;
+        fi
+        echo "Enabling all installed rules...";
+        curl -s -X POST -u "$AUTH" -H 'kbn-xsrf: true' -H 'elastic-api-version: 2023-10-31' \
+          -H 'Content-Type: application/json' \
+          "$KB/api/detection_engine/rules/_bulk_action" \
+          -d '{"action":"enable","query":""}' >/dev/null || true
+        echo "Rules bootstrap complete.";
+    networks:
+      - purplelab
+
+  # ── Tuoni C2 ───────────────────────────────────────────────
+  # Tuoni's community edition is NOT run from this file — it installs
+  # via its own script, which stands up server + client + nginx and a
+  # `tuoni` CLI:   curl https://tuoni.sh | bash    (run inside WSL2)
+  # Community tier needs no licence key. Web UI: https://localhost:12702
+  # It shares this Docker host, so the Windows target can reach it.
+
+  # ── Render Windows provisioning config from .env ───────────
+  # Substitutes ES host + password + stack version into the oem/
+  # files the Windows VM runs on first boot.
+  config-render:
+    image: alpine:3.20
+    container_name: pl-config-render
+    environment:
+      - ESHOST=172.30.0.10
+      - KBHOST=172.30.0.11
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - STACK_VERSION=${STACK_VERSION}
+    volumes:
+      - ./windows/templates:/templates:ro
+      - ./windows/oem:/oem
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache gettext >/dev/null 2>&1
+        for f in install.bat winlogbeat.yml; do
+          envsubst '$$ESHOST $$KBHOST $$ELASTIC_PASSWORD $$STACK_VERSION' \
+            < /templates/$$f > /oem/$$f
+        done
+        echo "Rendered Windows oem config into ./windows/oem/"
+    networks:
+      - purplelab
+
+  # ── Windows target (real Windows VM in a container) ────────
+  windows:
+    image: dockurr/windows
+    container_name: pl-windows
+    depends_on:
+      config-render:
+        condition: service_completed_successfully
+    environment:
+      VERSION: ${WIN_VERSION}
+      RAM_SIZE: ${WIN_RAM}
+      CPU_CORES: ${WIN_CPU}
+      DISK_SIZE: ${WIN_DISK}
+      USERNAME: ${WIN_USERNAME}
+      PASSWORD: ${WIN_PASSWORD}
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "${WIN_VIEW_PORT}:8006"        # web viewer (setup progress / console)
+      - "${WIN_RDP_PORT}:3389/tcp"     # RDP
+      - "${WIN_RDP_PORT}:3389/udp"
+      - "${WIN_SSH_PORT}:22/tcp"       # SSH into the Windows guest
+    volumes:
+      - ./windows/oem:/oem             # install.bat auto-runs after Windows setup
+      - win_storage:/storage
+    stop_grace_period: 2m
+    restart: unless-stopped
+    networks:
+      purplelab:
+        ipv4_address: 172.30.0.20
+
+networks:
+  purplelab:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  es_data:
+  win_storage:

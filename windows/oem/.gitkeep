@@ -1,0 +1,3 @@
+# Rendered install.bat and winlogbeat.yml are written here by the
+# config-render service at startup. Do not edit files here directly —
+# edit windows/templates/ instead.

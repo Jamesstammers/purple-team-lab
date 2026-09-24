@@ -1,0 +1,7 @@
+# Local config with secrets — never commit
+.env
+lab.env
+
+# Rendered Windows provisioning files (generated from windows/templates/)
+windows/oem/*
+!windows/oem/.gitkeep
