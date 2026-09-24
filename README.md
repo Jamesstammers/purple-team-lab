@@ -40,7 +40,7 @@ detection-engineering practice.
 **Then clone into your WSL2 home (not the Windows filesystem) and run:**
 
 ```bash
-git clone https://github.com/<you>/purple-team-lab.git
+git clone https://github.com/jamesstammers/purple-team-lab.git
 cd purple-team-lab
 chmod +x *.sh
 ./start-lab.sh
