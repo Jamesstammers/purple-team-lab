@@ -34,10 +34,8 @@ banner(){
     printf '\n  === PURPLE TEAM LAB ===\n'
   fi
   _c 246
-  printf '\n        =[ purple-team-lab %s ]\n' "$ver"
-  printf     '+ -- --=[ elastic SIEM  ·  windows target  ·  tuoni C2 ]\n'
-  printf     '+ -- --=[ sysmon + winlogbeat  ·  prebuilt detection rules ]\n'
-  _r; printf '\n'
+  printf '\n  Home Purple Team Lab · built on Docker\n\n'
+  _r
   _show
 }
 

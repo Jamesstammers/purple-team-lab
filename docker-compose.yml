@@ -138,6 +138,7 @@ services:
       - KBHOST=172.30.0.11
       - FLEETHOST=172.30.0.40
       - INGEST=${INGEST:-winlogbeat}
+      - WIN_HOSTNAME=${WIN_HOSTNAME:-}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - STACK_VERSION=${STACK_VERSION}
     volumes:
@@ -148,7 +149,7 @@ services:
       - |
         apk add --no-cache gettext >/dev/null 2>&1
         for f in install.bat winlogbeat.yml; do
-          envsubst '$$ESHOST $$KBHOST $$FLEETHOST $$INGEST $$ELASTIC_PASSWORD $$STACK_VERSION' \
+          envsubst '$$ESHOST $$KBHOST $$FLEETHOST $$INGEST $$WIN_HOSTNAME $$ELASTIC_PASSWORD $$STACK_VERSION' \
             < /templates/$$f > /oem/$$f
         done
         echo "Rendered Windows oem config into ./windows/oem/"

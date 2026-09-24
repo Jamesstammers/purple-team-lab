@@ -127,6 +127,30 @@ Then `wsl --shutdown` (PowerShell) and restart Docker Desktop. Tune footprint in
 `.env` via `ES_MEM` (e.g. `1g`) and `WIN_RAM` (e.g. `3G`). On an 8 GB host, install
 Windows with Tuoni stopped first, then start Tuoni.
 
+## The `purple` CLI (optional one-liner)
+
+Install once to drive everything with short commands from anywhere:
+
+```bash
+./purple install        # symlinks purple into /usr/local/bin (uses sudo)
+```
+
+Then:
+
+```bash
+purple start            # bring the lab up
+purple stop             # stop (add --wipe to delete data)
+purple restart
+purple status           # health snapshot
+purple rules            # (re)install + enable detection rules
+purple clear-logs -y    # reset telemetry (add --alerts to clear fired alerts)
+purple save clean       # snapshot the Windows target
+purple revert clean     # roll back to a snapshot
+purple -h               # full help
+```
+
+The underlying `*.sh` scripts still work directly if you prefer.
+
 ## Managing the lab
 
 ```bash

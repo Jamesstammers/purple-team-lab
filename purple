@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# ============================================================
+#  purple — Home Purple Team Lab control CLI
+#  Install:  ./purple install    (symlinks into /usr/local/bin)
+#  Then:     purple start | stop | status | clear-logs | revert ...
+# ============================================================
+set -e
+
+# Resolve the repo dir even when called via a symlink in /usr/local/bin.
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+LAB_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+cd "$LAB_DIR"
+
+usage() {
+  cat <<'EOF'
+
+  purple — Home Purple Team Lab (Docker)
+
+  Usage: purple <command> [options]
+
+  Lab control
+    start                 Bring the lab up (Elastic, Kibana, Windows, Tuoni)
+    stop [--wipe]         Stop the lab; --wipe also deletes data volumes
+    restart               Stop, then start
+    status                Health snapshot of every component
+
+  Detection / data
+    rules                 (Re)install + enable prebuilt detection rules
+    clear-logs [-y] [--alerts]
+                          Delete ingested telemetry (and optionally alerts)
+
+  Windows target snapshots
+    save [name]           Save a disk snapshot (default: clean)
+    revert [name]         Restore a snapshot (default: clean)
+    snapshots             List snapshots
+
+  Setup
+    install               Symlink 'purple' into /usr/local/bin (uses sudo)
+    uninstall             Remove that symlink
+    -h, --help            Show this help
+
+  Examples
+    purple start
+    purple clear-logs -y --alerts
+    purple revert clean
+    purple stop --wipe
+EOF
+}
+
+cmd="${1:-help}"; [ $# -gt 0 ] && shift || true
+
+case "$cmd" in
+  start)                exec ./start-lab.sh "$@" ;;
+  stop)                 exec ./stop-lab.sh "$@" ;;
+  restart)              ./stop-lab.sh && exec ./start-lab.sh ;;
+  status)               exec ./status.sh "$@" ;;
+  rules)                exec ./install-rules.sh "$@" ;;
+  clear-logs|reset-logs) exec ./reset-logs.sh "$@" ;;
+  save)                 exec ./snapshot.sh save "${1:-clean}" ;;
+  revert|restore)       exec ./snapshot.sh restore "${1:-clean}" ;;
+  snapshots|snapshot)   exec ./snapshot.sh "${@:-list}" ;;
+  install)
+    TARGET=/usr/local/bin/purple
+    echo "Linking $LAB_DIR/purple -> $TARGET (sudo)"
+    sudo ln -sf "$LAB_DIR/purple" "$TARGET"
+    sudo chmod +x "$LAB_DIR/purple"
+    echo "Done. Run 'purple -h' from anywhere."
+    ;;
+  uninstall)
+    echo "Removing /usr/local/bin/purple (sudo)"
+    sudo rm -f /usr/local/bin/purple
+    echo "Done."
+    ;;
+  -h|--help|help)       usage ;;
+  *) echo "Unknown command: $cmd"; usage; exit 1 ;;
+esac

@@ -13,6 +13,7 @@ set ESHOST=${ESHOST}
 set KBHOST=${KBHOST}
 set FLEETHOST=${FLEETHOST}
 set INGEST=${INGEST}
+set WINHOST=${WIN_HOSTNAME}
 set ESPASS=${ELASTIC_PASSWORD}
 set STACKVER=${STACK_VERSION}
 set TOOLS=C:\LabTools
@@ -27,6 +28,12 @@ tzutil /s "GMT Standard Time" >> %LOG% 2>&1
 sc config w32time start= auto >> %LOG% 2>&1
 net start w32time >> %LOG% 2>&1
 w32tm /resync /force >> %LOG% 2>&1
+
+REM ---------- 0b. Rename the computer (applied on the reboot at the end) ----------
+if not "%WINHOST%"=="" (
+  echo [*] Renaming computer to %WINHOST% >> %LOG%
+  powershell -NoProfile -Command "Rename-Computer -NewName '%WINHOST%' -Force" >> %LOG% 2>&1
+)
 
 REM ---------- 1. OpenSSH Server (headless access) ----------
 echo [*] Enabling OpenSSH Server >> %LOG%
@@ -77,4 +84,9 @@ goto DONE
 
 :DONE
 echo [%date% %time%] Provisioning complete >> %LOG%
+REM Reboot once to apply the hostname (services are set to auto-start).
+if not "%WINHOST%"=="" (
+  echo [*] Rebooting to apply hostname %WINHOST% >> %LOG%
+  shutdown /r /t 15
+)
 endlocal
