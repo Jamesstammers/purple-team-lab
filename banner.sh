@@ -46,6 +46,22 @@ ok(){   _c 83;  printf '      %s %s\n' "$([ "$UI" = 1 ] && printf '✔' || print
 warn(){ _c 214; printf '      ! %s\n' "${1:-}"; _r; }
 die(){  _c 196; printf '\n  [error] %s\n' "${1:-}" >&2; _r; exit 1; }
 
+# spin_run "message" <command...>   — run a (blocking) command in the
+# background and show a spinner + elapsed time until it finishes.
+spin_run(){
+  local msg="$1"; shift
+  "$@" & local pid=$!
+  local spin='|/-\' i=0 start=$SECONDS
+  _hide
+  while kill -0 "$pid" 2>/dev/null; do
+    [ "$UI" = 1 ] && printf '\r      %s %s (%ds)   ' "${spin:i++%4:1}" "$msg" "$((SECONDS-start))"
+    sleep 0.5
+  done
+  wait "$pid"; local rc=$?
+  _show; [ "$UI" = 1 ] && printf '\r%s[K' "$ESC"
+  return $rc
+}
+
 # wait_until "desc" "shell test" [timeout_s]
 wait_until(){
   local desc="$1" test_cmd="$2" timeout="${3:-300}"
