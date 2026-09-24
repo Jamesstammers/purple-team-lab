@@ -35,7 +35,14 @@ services:
       - FLEET_SERVER_PORT=8220
     ports:
       - "8220:8220"
+    volumes:
+      # Persist agent identity so restarts reuse ONE Fleet Server agent
+      # instead of enrolling a new one each time (no more offline pile-up).
+      - fleet_server_state:/usr/share/elastic-agent/state
     restart: unless-stopped
     networks:
       purplelab:
         ipv4_address: 172.30.0.40
+
+volumes:
+  fleet_server_state:
