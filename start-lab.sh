@@ -43,10 +43,19 @@ banner "${STACK_VERSION:-}"
 [ -e /dev/kvm ] || warn "/dev/kvm not found — the Windows target may fail to boot (needs WSL2 + nested virtualization)."
 
 # --- 1. pull -----------------------------------------------------------
-step "Pulling Elastic images (validates STACK_VERSION)"
-$DC pull elasticsearch kibana || die "Image pull failed. Check STACK_VERSION=$STACK_VERSION is a real tag on docker.elastic.co."
-[ "$INGEST" = "elastic-agent" ] && $DC pull fleet-server >/dev/null 2>&1
-ok "images ready"
+step "Checking Elastic images"
+imgs="docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION} docker.elastic.co/kibana/kibana:${STACK_VERSION}"
+[ "$INGEST" = "elastic-agent" ] && imgs="$imgs docker.elastic.co/elastic-agent/elastic-agent:${STACK_VERSION}"
+need_pull=0
+for img in $imgs; do docker image inspect "$img" >/dev/null 2>&1 || need_pull=1; done
+if [ "$need_pull" = 1 ]; then
+  spin_run "pulling images (first run / after a cache clear)" \
+    $DC --progress quiet pull elasticsearch kibana || die "Image pull failed — check STACK_VERSION=$STACK_VERSION is a real tag on docker.elastic.co."
+  [ "$INGEST" = "elastic-agent" ] && $DC --progress quiet pull fleet-server >/dev/null 2>&1
+  ok "images pulled"
+else
+  ok "images already present (skipping pull)"
+fi
 
 # --- 2. core stack -----------------------------------------------------
 step "Starting core stack (Elasticsearch, Kibana, Windows target)"
