@@ -59,8 +59,9 @@ fi
 
 # --- 2. core stack -----------------------------------------------------
 step "Starting core stack (Elasticsearch, Kibana, Windows target)"
-spin_run "creating & waiting for containers (first Fleet run downloads packages — can take a few min)" \
-  $DC --progress quiet up -d || die "compose up failed — check: $DC logs"
+# Verbose on purpose: shows each container's Waiting/Started status. On a first
+# Fleet run this can sit a few minutes while Kibana pulls integration packages.
+$DC up -d || die "compose up failed — check: $DC logs"
 ok "containers up"
 
 # --- 3. wait for services ---------------------------------------------
