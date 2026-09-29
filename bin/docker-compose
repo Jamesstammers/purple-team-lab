@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Shim: Tuoni's setup checks for a legacy `docker-compose` binary, which Docker
+# Desktop doesn't provide (it ships the `docker compose` v2 plugin). Without this
+# Tuoni thinks Compose is missing and offers to REINSTALL Docker — don't let it.
+# start-lab.sh puts this directory on PATH so Tuoni's check passes cleanly.
+exec docker compose "$@"

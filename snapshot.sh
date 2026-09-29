@@ -23,7 +23,8 @@ VOL=$(docker volume ls --format '{{.Name}}' | grep '_win_storage$' | head -n1)
 [ -n "$VOL" ] || { echo "[snap] Couldn't find the win_storage volume — has the lab ever started?"; exit 1; }
 
 stop_win()  { echo "[snap] Stopping Windows target..."; docker compose --progress quiet stop windows >/dev/null 2>&1; }
-start_win() { echo "[snap] Starting Windows target..."; docker compose --progress quiet start windows >/dev/null 2>&1; }
+# up -d (not start) so restore works even if the container was removed by a 'down'.
+start_win() { echo "[snap] Starting Windows target..."; docker compose --progress quiet up -d --no-deps windows >/dev/null 2>&1; }
 
 case "$CMD" in
   save)

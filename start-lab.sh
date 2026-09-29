@@ -11,6 +11,10 @@
 set -euo pipefail
 LAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$LAB_DIR"
 TUONI_DIR="${HOME}/tuoni"
+# Put our docker-compose shim on PATH so Tuoni's dependency check passes and it
+# never offers to reinstall Docker (which breaks Docker Desktop + WSL setups).
+chmod +x "$LAB_DIR/bin/docker-compose" 2>/dev/null || true
+export PATH="$LAB_DIR/bin:$PATH"
 # shellcheck source=banner.sh
 . "$LAB_DIR/banner.sh"
 
@@ -61,7 +65,11 @@ fi
 step "Starting core stack (Elasticsearch, Kibana, Windows target)"
 # Verbose on purpose: shows each container's Waiting/Started status. On a first
 # Fleet run this can sit a few minutes while Kibana pulls integration packages.
-$DC up -d || die "compose up failed — check: $DC logs"
+if ! $DC up -d; then
+  warn "compose up failed — clearing unused Docker networks and retrying (usually a stale network / 172.30.0.0/24 overlap)"
+  docker network prune -f >/dev/null 2>&1 || true
+  $DC up -d || die "compose up failed again — check: $DC logs"
+fi
 ok "containers up"
 
 # --- 3. wait for services ---------------------------------------------
@@ -73,8 +81,15 @@ if [ "$INGEST" = "elastic-agent" ]; then
 fi
 
 # --- 4. detection rules -----------------------------------------------
-step "Installing + enabling prebuilt detection rules"
-bash install-rules.sh || warn "rules step had issues — re-run ./install-rules.sh later."
+step "Detection rules"
+rule_total=$(curl -s -u "elastic:$ELASTIC_PASSWORD" -H 'elastic-api-version: 2023-10-31' \
+  "http://localhost:${KIBANA_PORT:-5601}/api/detection_engine/rules/_find?per_page=0" \
+  | grep -o '"total":[0-9]*' | head -n1 | cut -d: -f2)
+if [ "${rule_total:-0}" -gt 0 ] 2>/dev/null; then
+  ok "rules already installed ($rule_total) — skipping (run 'purple rules' to refresh)"
+else
+  bash install-rules.sh || warn "rules step had issues — re-run ./install-rules.sh later."
+fi
 
 # --- 5. Tuoni ----------------------------------------------------------
 step "Starting Tuoni C2"
@@ -91,7 +106,14 @@ if [ -z "$FQDN" ]; then
 fi
 
 # First start generates config/certs/creds if this is a fresh clone.
-( cd "$TUONI_DIR" && ./tuoni start ) || warn "tuoni start had issues — cd ~/tuoni && ./tuoni logs"
+# If it fails (e.g. stale network refs after a network prune), recreate the
+# containers and retry once so it self-heals.
+if ! ( cd "$TUONI_DIR" && ./tuoni start ); then
+  warn "tuoni start failed — recreating its containers (clears stale network refs)"
+  docker rm -f tuoni-server tuoni-client tuoni-client-nginx tuoni-docs tuoni-utility >/dev/null 2>&1 || true
+  ( cd "$TUONI_DIR" && ./tuoni stop ) >/dev/null 2>&1 || true
+  ( cd "$TUONI_DIR" && ./tuoni start ) || warn "tuoni still failing — cd ~/tuoni && ./tuoni logs"
+fi
 
 # Point the browser client at $FQDN instead of 'local-c2', restart only if changed.
 CFG="$TUONI_DIR/config/tuoni.env"
@@ -109,6 +131,20 @@ if [ -f "$CFG" ]; then
   ok "tuoni up — browser client points at $FQDN"
 else
   warn "tuoni config not found ($CFG) — client still uses default 'local-c2' (see README)."
+fi
+
+# Force the Tuoni login to tuoni/tuoni for the lab. change-credentials is
+# interactive (username, then password), so we feed both on stdin. Only attempt
+# it when sudo won't prompt (it's cached from './tuoni start' above), and cap it
+# with a timeout so it can never hang the script.
+if sudo -n true 2>/dev/null; then
+  if printf 'tuoni\ntuoni\n' | ( cd "$TUONI_DIR" && timeout 40 ./tuoni change-credentials ) >/dev/null 2>&1; then
+    ok "tuoni login set to tuoni / tuoni"
+  else
+    warn "couldn't set tuoni creds automatically — run: cd ~/tuoni && ./tuoni change-credentials"
+  fi
+else
+  warn "skipped setting tuoni creds (sudo needs a password) — run: cd ~/tuoni && ./tuoni change-credentials"
 fi
 
 # --- 6. Windows note (non-blocking) -----------------------------------
@@ -136,12 +172,19 @@ fi
 # --- summary ----------------------------------------------------------
 _c 141; printf '\n  ── Lab endpoints ─────────────────────────────────\n'; _r
 _c 246
-printf '   Kibana        http://localhost:%s   (elastic / see .env)\n' "${KIBANA_PORT:-5601}"
-printf '   Elasticsearch http://localhost:%s\n' "${ES_PORT:-9200}"
-printf '   Windows SSH   ssh %s@localhost -p %s\n' "${WIN_USERNAME:-labadmin}" "${WIN_SSH_PORT:-2222}"
+printf '   Kibana        http://localhost:%s   (elastic / %s)\n' "${KIBANA_PORT:-5601}" "$ELASTIC_PASSWORD"
+printf '   Elasticsearch http://localhost:%s   (elastic / %s)\n' "${ES_PORT:-9200}" "$ELASTIC_PASSWORD"
+printf '   Windows SSH   ssh %s@localhost -p %s   (password: %s)\n' "${WIN_USERNAME:-jsmith}" "${WIN_SSH_PORT:-2222}" "$WIN_PASSWORD"
 printf '   Windows setup http://localhost:%s\n' "${WIN_VIEW_PORT:-8006}"
-printf '   Tuoni C2      https://localhost:12702   (cd ~/tuoni && ./tuoni print-credentials)\n'
+printf '   Tuoni C2      https://localhost:12702\n'
 printf '   Tuoni server  https://%s:8443   (accept the self-signed cert once, per browser)\n' "$FQDN"
 [ "$INGEST" = "elastic-agent" ] && printf '   Fleet Server  http://localhost:8220   (Kibana > Fleet > Agents)\n'
+# Tuoni login — printed straight from Tuoni (its password is auto-generated)
+tcreds=$( cd "$TUONI_DIR" 2>/dev/null && ./tuoni print-credentials 2>/dev/null | grep -iE 'user|pass' | tr -d '\r' )
+if [ -n "$tcreds" ]; then
+  printf '   Tuoni login:\n'; printf '%s\n' "$tcreds" | sed 's/^/       /'
+else
+  printf '   Tuoni login   run: cd ~/tuoni && ./tuoni print-credentials\n'
+fi
 _r
 printf '\n'
